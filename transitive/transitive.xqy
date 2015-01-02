@@ -110,7 +110,7 @@ declare function transitive:ancestors-or-self(
    $preds as sem:iri*,
    $limit as xs:integer
 ) {
-   transitive:ancestor-or-self($seeds,$preds,$limit,())
+   transitive:ancestors-or-self($seeds,$preds,$limit,())
 };
 
 (:~
@@ -230,25 +230,25 @@ declare function transitive:ancestors-descendants-or-self(
 ) {
    transitive:ancestors-descendants-or-self($seeds,$preds,$limit,())
 };
-
 (:~
- : Returns all ancestors and descendants from a given node and the seeds
+ : Returns all ancestors and descendants and self from a starting seed 
  : @param $seeds - The seed subject
  : @param $preds - The seed predicate
  : @param $limit - The recursive depth or degrees to traverse before stopping.
  : @param $filter - A cts:query that will be passed as a condition of the relationship
  :)
-declare function transitive:ancestors-descendants(
+declare function transitive:ancestors-descendants-or-self(
    $seeds as sem:iri*,
    $preds as sem:iri*,
    $limit as xs:integer,
    $filter as cts:query?
-) {(
-  transitive:transitive-up($seeds,$preds,$limit,$filter)[fn:not((. = $seeds))],
-  $seeds,
-  transitive:transitive-down($seeds,$preds,$limit,$filter)[fn:not((. = $seeds))]
+) {
+(
+  transitive:transitive-up($seeds,$preds,$limit,$filter)
+  transitive:transitive-down($seeds,$preds,$limit,$filter)
 )
 };
+
 
 (:~
  : Returns all Roots given a predicate.  
