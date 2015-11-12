@@ -87,44 +87,58 @@ function descendants(
 ####transitive:roots()
 Returns all root subjects given a predicate.  The logic is that a parent should never be the object of a given subject via a predicate
 ```
- $predicates - An IRI Predicate to filter relationships by.
- [$subject] - a base subject if not passed will not bind subject
- [$query] - a cts:query to limit scope of roots returned
+ transitive:roots(
+   $predicates - An IRI Predicate to filter relationships by.
+   [$subject] - a base subject if not passed will not bind subject
+   [$query] - a cts:query to limit scope of roots returned
+)
 ```
 
-####transitive:siblings
+####transitive:siblings()
+
 ```
+
 function siblings(
   $seeds - The seed subject
   $preds - The seed predicate
   [$limit] - The recursive depth or degrees to traverse before stopping.
   [$filter] - A cts:query that will be passed as a condition of the relationship
-)```
+)
+
+```
 
 ## Utility Functions
 
-####transitive:transitive-down
+####transitive:transitive-down()
+
 Transitively searches up the predicate s->o
+
 ```
 function transitive-down(
   $seeds - The seed subject
   $preds - The seed predicate
   [$limit] - The recursive depth or degrees to traverse before stopping.
   [$filter] - A cts:query that will be passed as a condition of the relationship
-)```
+)
+```
 
-###transitive:transitive-up
+###transitive:transitive-up()
+
 Transitively searches up the predicate o->s
-```transitive-down(
+
+```
+transitive-down(
   $seeds - The seed subject
   $preds - The seed predicate
   [$limit] - The recursive depth or degrees to traverse before stopping.
   [$filter] - A cts:query that will be passed as a condition of the relationship
-)```
+)
+```
 
 
 ####transitive:traverser
 Takes a seed subject/predicate and creates a nested tree structure traversing the predicate based on a seed subject building a nested json object
+
 ```
 function transitive:traverser(
 $subject - Starting Subject to traverse
@@ -133,6 +147,7 @@ $predicate - The relationship to use for the traversal
 [$property-map] - A map:map where the key is the iri and the value can be a label to replace it with.
 ) as json:object 
 ```
+
 #####Options Map:
 The following are the options available for traverser.  This allows you ways to control how the traverser operates.
 
@@ -147,8 +162,8 @@ The following are the options available for traverser.  This allows you ways to 
           map:entry($geonames:countryCode,"countryCode")
   )))
 ```
-* `map:entry("recursive",xs:boolean)` - Determines if the traversal is recursive
-* `map:entry("maxdepth",xs:integer)`  - Determines how deep to traverse before it stops 
+ * `map:entry("recursive",xs:boolean)` - Determines if the traversal is recursive
+ * `map:entry("maxdepth",xs:integer)`  - Determines how deep to traverse before it stops 
  * `-1`  infinity or will not stop till all nodes are traversed
  * `0`  Is only the current node
  * `*` Any depth level
@@ -157,12 +172,20 @@ The callback assumes the   following signature: `function($node,[$options,[depth
 
 
 ####transitive:traverser-inner
-```
- : (Internal Function)Transitive Inner wraps traversal library and supports the recursive calls.
+(Internal Function)Transitive Inner wraps traversal library and supports the recursive calls.
+Parameters:
+ * $subject - Is the current subject to traverse
+ * $predicate - The relationship to use for the traversal
+ * $query - A cts:query to constraint all results by
+ * $options - options node as a map:map
+ * $depth - Is the current depth of the traverser
 
- : @param $subject - Is the current subject to traverse
- : @param $predicate - The relationship to use for the traversal
- : @param $query - A cts:query to constraint all results by
- : @param $options - options node as a map:map
- : @param $depth - Is the current depth of the traverser
 ```
+traverser-inner(
+  $subject as sem:iri*,
+  $predicate as sem:iri*,
+  $query as cts:query,
+  $options as map:map,
+  $depth as xs:integer
+ ) 
+ 
