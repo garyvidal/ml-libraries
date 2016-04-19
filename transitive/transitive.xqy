@@ -2,11 +2,111 @@ xquery version "1.0-ml";
 
 module namespace transitive = "http://marklogic.com/transitive";
 
-import module namespace semi = "http://marklogic.com/semantics/impl"
-      at "/MarkLogic/semantics/sem-impl.xqy";
 
 import module namespace sem = "http://marklogic.com/semantics" 
     at "/MarkLogic/semantics.xqy";
+declare option xdmp:mapping "false";
+declare variable $DEFAULT-PARALLEL-THREADS := 4;
+declare variable $THREAD-PARAM := "threads";
+declare variable $CONCURRENT-PARAM := "concurrent";
+declare variable $AXIS-PARAM  := "axis";
+
+(:~
+ :Takes a function and a sequence and converts the calls into a future
+ xdmp:s
+~:)
+declare function transitive:future(
+  $funct as function(*),
+  $sequence as item()*,
+  $threads as xs:integer
+) {
+  let $remainder := 
+    if($sequence) then fn:count($sequence) else 0
+  let $splits := 
+    if($remainder) then fn:ceiling($remainder div $threads) else fn:ceiling(fn:count($sequence) div $threads)
+  let $future := 
+    for $s in (1 to $threads)
+    let $inner-seq := fn:subsequence($sequence,(($s - 1) * $threads) + 1,$splits)
+    return
+      xdmp:spawn-function(
+          function() {
+             xdmp:lazy($inner-seq ! $funct(.))
+          },
+          <options xmlns="xdmp:eval">
+            <priority>higher</priority>
+            <result>true</result>
+          </options>
+     )
+  return $future
+};
+
+(:~
+ : Copied BFS implementation from /semantics/semantics-impl.xqy
+~:)
+declare function transitive:bfs(
+  $s as sem:iri*, 
+  $limit as xs:integer, 
+  $adjV
+) {
+  transitive:bfs($s,$limit,$adjV,map:map())
+};
+(:~
+ : Copied BFS implementation from /semantics/semantics-impl.xqy
+~:)
+declare function transitive:bfs(
+  $s as sem:iri*, 
+  $limit as xs:integer, 
+  $adjV, 
+  $options as map:map
+) {
+    let $visited := map:map()
+    let $_ := $s ! map:put($visited, ., fn:true())
+    return transitive:bfs-inner($visited, $s, $limit, $adjV)
+};
+(:~
+ : Copied BFS implementation from /semantics/semantics-impl.xqy
+~:)
+declare function transitive:bfs-inner(
+    $visited as map:map, 
+    $queue as sem:iri*, 
+    $limit as xs:integer, 
+    $adjacentVertices
+) {
+   transitive:bfs-inner($visited,$queue,$limit,$adjacentVertices,map:map())
+};
+(:~
+ : Copied BFS implementation from /semantics/semantics-impl.xqy
+~:)
+declare function transitive:bfs-inner(
+    $visited as map:map, 
+    $queue as sem:iri*, 
+    $limit as xs:integer, 
+    $adjacentVertices,
+    $options as map:map
+    ) {
+    if (fn:empty($queue) or $limit eq 0)
+    then map:keys($visited) ! sem:iri(.) (: do something with results :)
+    else
+        let $thingstoEnqueue :=
+          if(map:get($options,$CONCURRENT-PARAM) = fn:true())
+          then 
+           let $func := 
+             function($v) { 
+               if (map:contains($visited, $v))
+               then ()
+               else (map:put($visited, $v, fn:true()), $v)
+             }
+           let $threads := (map:get($options,$THREAD-PARAM),4)[1]
+           return 
+              transitive:future($func, $adjacentVertices($queue),$threads)
+          else 
+            for $v in $adjacentVertices($queue)
+            return
+                if (map:contains($visited, $v))
+                then ()
+                else (map:put($visited, $v, fn:true()), $v)
+        return transitive:bfs-inner($visited, $thingstoEnqueue, $limit - 1, $adjacentVertices,$options)
+};
 
 (:~
  : Transitively searches up the predicate s->o
@@ -34,7 +134,7 @@ declare function transitive:transitive-down(
    $limit as xs:integer,
    $filter as cts:query?
 ) {
-   semi:bfs($seeds, $limit, function($s) { cts:triples($s,$preds,(),(),$filter) ! sem:triple-object(.) })
+   transitive:bfs($seeds, $limit, function($s) { cts:triples($s,$preds,(),(),$filter) ! sem:triple-object(.) })
 };
 
 (:~
@@ -64,7 +164,7 @@ declare function transitive:transitive-up(
    $limit as xs:integer,
    $filter as cts:query?
 ) {
-   semi:bfs($seeds, $limit, function($o) { cts:triples((),$preds,$o,(),(),$filter) ! sem:triple-subject(.) })
+   transitive:bfs($seeds, $limit, function($o) { cts:triples((),$preds,$o,(),(),$filter) ! sem:triple-subject(.) })
 };
 
 (:~
@@ -244,7 +344,7 @@ declare function transitive:ancestors-descendants-or-self(
    $filter as cts:query?
 ) {
 (
-  transitive:transitive-up($seeds,$preds,$limit,$filter)
+  transitive:transitive-up($seeds,$preds,$limit,$filter),
   transitive:transitive-down($seeds,$preds,$limit,$filter)
 )
 };
@@ -345,8 +445,10 @@ declare function transitive:ancestor(
    $query as cts:query?
 ) {
    let $parents := transitive:ancestor($seeds,$preds,$query)
-   return
-     transitive:children($parents,$preds,$query)[fn:not((. = $seeds))]  
+   return (
+     transitive:ancestors($parents,$preds,1,$query),
+     transitive:descendants($parents,$preds,1,$query)
+     )[fn:not((. = $seeds))]  
 };
 
 (:Transitive Extensions:)
@@ -428,7 +530,7 @@ declare function transitive:traverser(
  :            function($node,[$options,[depth]]) {}
  :)
 declare function transitive:traverser(
-    $subject as sem:iri,
+    $subject as sem:iri*,
     $predicate as sem:iri*,
     $query as cts:query?,
     $options as map:map?
@@ -438,7 +540,6 @@ declare function transitive:traverser(
 
 (:~
  : Transitive Inner wraps traversal library and supports the recursive calls.
-
  : @param $subject - Is the current subject to traverse
  : @param $predicate - The relationship to use for the traversal
  : @param $query - A cts:query to constraint all results by
@@ -446,7 +547,7 @@ declare function transitive:traverser(
  : @param $depth - Is the current depth of the traverser
 ~:)
 declare function transitive:traverser-inner(
-    $subject as sem:iri,
+    $subject as sem:iri*,
     $predicate as sem:iri*,
     $query as cts:query?,
     $options as map:map?,
@@ -458,8 +559,13 @@ declare function transitive:traverser-inner(
    let $has-depth := if($max-depth eq -1) then fn:true() else if($depth lt $max-depth) then fn:true() else fn:false()
    let $callback  := map:get($options,"callback")
    let $yield     := map:get($options,"yield") eq fn:true()
+   let $node-name := (map:get($options,"child-name"),"nodes")[1]
    (:Setter Vars:)
-   let $child := transitive:descendants($subject,$predicate,1)
+   let $child := 
+     switch(map:get($options,$AXIS-PARAM))
+     case "ancestor" return transitive:ancestors($subject,$predicate,1)
+     case "sibling"  return transitive:siblings($subject,$predicate)
+     default return transitive:descendants($subject,$predicate,1)
    let $jso := json:object()
    let $_ := (      
        map:put($jso,"subject",$subject),
@@ -495,9 +601,13 @@ declare function transitive:traverser-inner(
                 case 3 return $callback($jso,$options,$depth)
                 default return fn:error(xs:QName("CALLBACK-ARITY-MISMATCH"),"No Supported Callback interface with arity",$arity)
         else ()
+   let $child-name := 
+     if($node-name instance of function(*))
+     then $node-name($jso)
+     else $node-name 
    let $_ := 
        if($recursive and $has-depth and fn:not($yield))
-       then map:put($jso,"nodes",json:to-array($child ! transitive:traverser-inner(.,$predicate,$query,$options,$depth + 1)))
+       then map:put($jso,$child-name,json:to-array($child ! transitive:traverser-inner(.,$predicate,$query,$options,$depth + 1)))
        else ()
    return $jso
 };
