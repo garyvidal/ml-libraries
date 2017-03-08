@@ -22,6 +22,7 @@ Obviously I did not write all this code myself.
 ### Provided the dbf/shp parser logic:
 *  https://github.com/gipong/shp2geojson.js
 *  License : https://github.com/gipong/shp2geojson.js/blob/master/LICENSE
+
 ### Proj4js which provides coordinate mapping between different systems.
 * 
 * https://github.com/proj4js/proj4js
